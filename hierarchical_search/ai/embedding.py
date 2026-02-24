@@ -12,6 +12,9 @@ class Embedder(Protocol):
     def embed_text(self, text: str) -> list[float]:
         ...
 
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        ...
+
 
 class HashingEmbedder:
     def __init__(self, dim: int = 384):
@@ -36,6 +39,9 @@ class HashingEmbedder:
             return vec
         return [v / norm for v in vec]
 
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        return [self.embed_text(text) for text in texts]
+
 
 class OpenAIEmbedder:
     def __init__(
@@ -59,6 +65,20 @@ class OpenAIEmbedder:
         self.dim = dim
 
     def embed_text(self, text: str) -> list[float]:
-        resp = self.client.embeddings.create(model=self.model, input=text)
-        data = resp.data[0].embedding
-        return [float(x) for x in data]
+        return self.embed_texts([text])[0]
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        resp = self.client.embeddings.create(model=self.model, input=texts)
+        data = list(getattr(resp, "data", []) or [])
+        # Preserve input order if the API provides explicit indices.
+        try:
+            data.sort(key=lambda item: int(getattr(item, "index", 0)))
+        except Exception:
+            pass
+        embeddings: list[list[float]] = []
+        for item in data:
+            vec = getattr(item, "embedding", None)
+            embeddings.append([float(x) for x in (vec or [])])
+        return embeddings

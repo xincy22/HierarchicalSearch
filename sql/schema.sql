@@ -1,9 +1,11 @@
 CREATE TABLE IF NOT EXISTS documents (
     doc_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    doc_key VARCHAR(512) NOT NULL,
     filename VARCHAR(255) NOT NULL,
     file_topic TEXT NOT NULL,
     doc_title VARCHAR(512) NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY ux_documents_doc_key (doc_key)
 );
 
 CREATE TABLE IF NOT EXISTS sections (

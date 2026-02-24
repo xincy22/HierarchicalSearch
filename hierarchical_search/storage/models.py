@@ -14,6 +14,7 @@ class Document(Base):
     __tablename__ = "documents"
 
     doc_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    doc_key: Mapped[str] = mapped_column(String(512), nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     file_topic: Mapped[str] = mapped_column(Text, nullable=False)
     doc_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -24,6 +25,8 @@ class Document(Base):
     sections: Mapped[list["Section"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
+
+    __table_args__ = (Index("ux_documents_doc_key", "doc_key", unique=True),)
 
 
 class Section(Base):

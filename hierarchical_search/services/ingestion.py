@@ -51,20 +51,45 @@ class IngestionPipeline:
         self.llm = llm_client
         self.parser = parser or MarkdownSectionParser()
 
-    def ingest_markdown_text(self, markdown: str, filename: str) -> IngestionResult:
+    def _embed_texts(self, texts: list[str]) -> list[list[float]]:
+        fn = getattr(self.embedder, "embed_texts", None)
+        if callable(fn):
+            return fn(texts)
+        return [self.embedder.embed_text(text) for text in texts]
+
+    @staticmethod
+    def _normalize_doc_key(doc_key: str) -> str:
+        key = doc_key.strip()
+        if not key:
+            return ""
+        # Normalize path separators for stable keys across platforms.
+        return key.replace("\\", "/")
+
+    def ingest_markdown_text(
+        self, markdown: str, filename: str, doc_key: str | None = None
+    ) -> IngestionResult:
         sections = self.parser.parse(markdown)
         doc_title = _guess_doc_title(filename, sections)
         file_topic = self.llm.extract_topic(markdown, filename)
+        normalized_key = self._normalize_doc_key(doc_key or filename) or filename
         doc_id = self.repository.create_document(
-            filename=filename, file_topic=file_topic, doc_title=doc_title
+            doc_key=normalized_key,
+            filename=filename,
+            file_topic=file_topic,
+            doc_title=doc_title,
         )
 
         aliases = self.llm.generate_aliases(filename, file_topic, doc_title, max_aliases=8)
+        base_header = filename
+        if normalized_key and normalized_key != filename:
+            base_header = f"{filename}\n{normalized_key}"
         doc_variants: list[tuple[str, str]] = [
-            ("base", f"{filename}\n{file_topic}\n{doc_title}")
+            ("base", f"{base_header}\n{file_topic}\n{doc_title}")
         ]
         for idx, alias in enumerate(aliases):
-            doc_variants.append((f"alias_{idx+1}", f"{alias}\n{doc_title}\n{file_topic}"))
+            doc_variants.append(
+                (f"alias_{idx+1}", f"{alias}\n{doc_title}\n{file_topic}")
+            )
         # Keep variants unique for stable aggregation.
         dedup: dict[str, tuple[str, str]] = {}
         for variant, text in doc_variants:
@@ -72,14 +97,17 @@ class IngestionPipeline:
             if key:
                 dedup[key] = (variant, text)
 
+        dedup_items = list(dedup.values())
+        doc_texts = [text for _, text in dedup_items]
+        doc_embeddings = self._embed_texts(doc_texts)
         doc_vectors = [
             DocVectorRecord(
                 doc_id=doc_id,
                 variant=variant,
                 text=text,
-                vector=self.embedder.embed_text(text),
+                vector=doc_embeddings[idx],
             )
-            for variant, text in dedup.values()
+            for idx, (variant, text) in enumerate(dedup_items)
         ]
         self.vector_store.add_doc_vectors(doc_vectors)
 
@@ -97,8 +125,10 @@ class IngestionPipeline:
             )
             for s in sections
         ]
-        self.repository.upsert_sections(section_rows)
+        self.repository.replace_sections(doc_id, section_rows)
 
+        section_texts = [_section_vector_text(s) for s in sections]
+        section_embeddings = self._embed_texts(section_texts)
         section_vectors = [
             SectionVectorRecord(
                 doc_id=doc_id,
@@ -106,10 +136,10 @@ class IngestionPipeline:
                 l1_title=s.l1_title,
                 l2_title=s.l2_title,
                 l3_title=s.l3_title,
-                text=_section_vector_text(s),
-                vector=self.embedder.embed_text(_section_vector_text(s)),
+                text=section_texts[idx],
+                vector=section_embeddings[idx],
             )
-            for s in sections
+            for idx, s in enumerate(sections)
         ]
         self.vector_store.add_section_vectors(section_vectors)
 
@@ -123,4 +153,9 @@ class IngestionPipeline:
     def ingest_markdown_file(self, path: str) -> IngestionResult:
         p = Path(path)
         content = p.read_text(encoding="utf-8")
-        return self.ingest_markdown_text(content, filename=p.name)
+        # Prefer a stable relative key to avoid leaking absolute paths into the DB.
+        try:
+            doc_key = p.resolve().relative_to(Path.cwd().resolve()).as_posix()
+        except Exception:
+            doc_key = p.as_posix()
+        return self.ingest_markdown_text(content, filename=p.name, doc_key=doc_key)

@@ -284,7 +284,7 @@ sql/schema.sql
 
 ## 9. 与方案映射
 
-- 文档表：`documents`
+- 文档表：`documents`（`doc_key` 唯一标识，`filename` 用于展示）
 - 章节表：`sections`，主键 `(doc_id, section_id)`
 - 向量集合：
   - `doc_vectors`

@@ -10,7 +10,7 @@
 
 ### SQL（documents/sections）
 
-- `documents`：一篇文档一行，稳定 `doc_id`
+- `documents`：一篇文档一行，`doc_key` 作为唯一标识（避免同名文件覆盖），稳定 `doc_id`；`filename` 用于展示
 - `sections`：章节内容表，主键 `(doc_id, section_id)`，直接返回 `body_text`
 
 关键点：
@@ -81,4 +81,3 @@
 - doc 定位错？（doc_vectors + rerank）
 - 锚点解析错？（anchor parser / LLM）
 - section 向量兜底错？（embedding、topK、标题切分、正文边界）
-
