@@ -312,5 +312,17 @@ More details: `docs/index.md`.
 
 ```bash
 python -m pip install -e ".[docs]"
+```
+
+macOS/Linux:
+
+```bash
 mkdocs serve
+```
+
+Windows PowerShell (avoid GBK console encoding issues with `mkdocs-material`):
+
+```powershell
+$env:PYTHONUTF8="1"
+python -X utf8 -m mkdocs serve
 ```
