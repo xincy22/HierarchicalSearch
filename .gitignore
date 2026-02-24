@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+hierarchical_search.db
+hierarchical_vectors.db
+.env
+*.egg-info/
+dist/
+build/
+.venv/
+benchmarks/*.json
+site/

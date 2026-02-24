@@ -1,0 +1,34 @@
+openai:
+  extract_topic:
+    system: "你是严谨的文档主题抽取器。"
+    user_template: |
+      用不超过20个字概括文档主题，直接返回字符串，不要解释。
+      filename: {filename}
+      content:
+      {content}
+
+  generate_aliases:
+    system: "你是检索召回优化助手。"
+    user_template: |
+      请为文档生成简短别名，用于检索召回。返回 JSON 数组字符串。
+      max_aliases={max_aliases}
+      filename={filename}
+      doc_title={doc_title}
+      file_topic={file_topic}
+
+  resolve_section_id:
+    system: "你是层级检索锚点解析器。"
+    user_template: |
+      你必须只返回 JSON：{{"section_id":"..."}}。
+      规则：
+      1) section_id 只能是 ^\d+(\.\d+)*$ 或 INSUFFICIENT。
+      2) 信息不足时返回 INSUFFICIENT。
+      query={query}
+
+  rerank_doc_candidates:
+    system: "你是文档相关性重排器。"
+    instruction: "按相关性从高到低返回 doc_id 列表(JSON array)。"
+
+  rerank_section_candidates:
+    system: "你是章节相关性重排器。"
+    instruction: "按相关性从高到低返回 section_id 列表(JSON array)。"

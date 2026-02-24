@@ -1,0 +1,23 @@
+site_name: HierarchicalSearch
+site_description: Single-chain hierarchical retrieval (doc_id -> section_id -> body_text)
+
+theme:
+  name: mkdocs
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - tables
+  - fenced_code
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Configuration: configuration.md
+  - Milvus: milvus.md
+  - Benchmark: benchmark.md
+  - Troubleshooting: troubleshooting.md

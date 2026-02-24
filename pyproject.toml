@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hierarchical-search"
+version = "0.1.0"
+description = "Single-chain hierarchical retrieval: doc_id -> section_id -> body_text"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+  "sqlalchemy>=2.0.30",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+openai = ["openai>=1.0.0"]
+milvus = ["pymilvus>=2.4.0"]
+dev = ["pytest>=8.0.0"]
+docs = ["mkdocs>=1.6.0", "mkdocs-material>=9.5.0"]
+
+[project.scripts]
+hierarchical-search = "hierarchical_search.app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["hierarchical_search*"]
+
+[tool.setuptools.package-data]
+"hierarchical_search.ai" = ["*.yaml"]
