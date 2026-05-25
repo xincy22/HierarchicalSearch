@@ -104,5 +104,11 @@ def ingest_file(
 ) -> int:
     p = Path(path)
     content = p.read_text(encoding="utf-8")
-    doc_key = p.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    # 优先用相对 cwd 的路径作为 doc_key（保持原有行为）；
+    # 路径在 cwd 之外（例如临时目录、绝对路径）时退回 absolute posix。
+    abs_p = p.resolve()
+    try:
+        doc_key = abs_p.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        doc_key = abs_p.as_posix()
     return ingest_markdown(content, p.name, doc_key, embedder, doc_store, vector_store)

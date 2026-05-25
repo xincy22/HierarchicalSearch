@@ -27,6 +27,7 @@ query → doc_id → section_id（锚点优先，向量兜底）→ body_text
 - [诊断与排查](#诊断与排查)
 - [测试](#测试)
 - [已知限制](#已知限制)
+- [Roadmap](#roadmap)
 
 ---
 
@@ -90,7 +91,9 @@ uv pip install -e ".[dev]"
 
 ## 快速开始（库）
 
-向量是内存里的，所以**入库 + 查询必须在同一个进程内**。这是推荐用法。
+向量默认在内存里，所以**最简用法是入库 + 查询同一个进程内**。要跨进程
+查询，调用 `vector_store.persist_to(doc_store)` 落盘，下次起进程后用
+`vector_store.load_from(doc_store)` 加载即可（CLI 已经这么做）。
 
 ```python
 from hierarchical_search.pipeline.embedding import HashingEmbedder
@@ -130,7 +133,8 @@ True 2.1 anchor_exact
 
 ## 快速开始（CLI）
 
-CLI 在每次 `python -m` 调用时是新进程，`VectorStore` 会重新初始化为空。所以 CLI **只适合"入库后立刻查询"的演示**：
+`ingest` 会把文档和向量都写入 SQLite，`query` 会自动从 SQLite 加载向量，
+所以这两个命令可以独立跨进程使用：
 
 ```bash
 python -m hierarchical_search --db hs.db init-db
@@ -140,7 +144,11 @@ python -m hierarchical_search --db hs.db query "sample 2.1 讲了什么"
 
 注意 `--db` 必须在子命令之前。
 
-要让查询命令独立可用，需要把向量也持久化到 SQLite（这里没做，留给你扩展）。
+需要"边入库边查、不落盘"的快速演示，用 `demo` 子命令：
+
+```bash
+python -m hierarchical_search --db :memory: demo examples/sample.md "sample 2.1 讲了什么"
+```
 
 ## API 速查
 
@@ -158,8 +166,12 @@ ingest_file(path, embedder, doc_store, vector_store) -> int
 ### `pipeline.retrieve`
 
 ```python
-retrieve(query, embedder, doc_store, vector_store, doc_top_k=20, section_top_k=50)
-    -> RetrievalResult
+retrieve(
+    query, embedder, doc_store, vector_store,
+    doc_top_k=20, section_top_k=50,
+    min_doc_score=0.05, min_doc_overlap=1,
+    min_section_score=0.05, min_section_overlap=1,
+) -> RetrievalResult
 ```
 
 `RetrievalResult` 字段：
@@ -172,7 +184,17 @@ retrieve(query, embedder, doc_store, vector_store, doc_top_k=20, section_top_k=5
 | `title_text` / `body_text` | 章节标题/正文 |
 | `doc_method` | 文档命中方式（目前固定 `doc_vectors`） |
 | `section_method` | 章节命中方式：`anchor_exact` 或 `fallback_vectors` |
+| `reject_reason` | 拒答原因，见下表；`found=True` 时为 `None` |
 | `diagnostics` | 候选列表 + 锚点解析结果 |
+
+`reject_reason` 可能取值：
+
+| 值 | 含义 |
+|----|------|
+| `no_doc_vectors` | 向量库为空（没入库 / 没 load） |
+| `low_doc_confidence` | 多个候选文档但都既不命中向量也无词法重叠 |
+| `no_section_vectors` | 已选 doc 下无 section 向量（异常状态） |
+| `low_section_confidence` | fallback 章节分数和词法重叠都太低 |
 
 ### `parsing.anchor`
 
@@ -208,7 +230,11 @@ class VectorStore:
     add_section_vectors(doc_id, vectors: list[SectionVector])
     search_docs(query_vec, top_k) -> list[tuple[DocVector, float]]
     search_sections(query_vec, doc_id, top_k) -> list[tuple[SectionVector, float]]
+    persist_to(doc_store)        # 写入 SQLite
+    load_from(doc_store)         # 从 SQLite 整体加载（覆盖内存）
 ```
+
+库用法默认是纯内存的；要跨进程查询时调用 `persist_to` / `load_from`，CLI 已经这么做。
 
 ## 数据模型
 
@@ -348,7 +374,9 @@ embed(query)
 
 | 现象 | 看什么 | 可能原因 |
 |------|--------|----------|
-| `found=False`、无 doc_candidates | doc_vectors 为空 | 没入库 / vector_store 是新进程的 |
+| `found=False`, `reject_reason=no_doc_vectors` | 是否 ingest 过；CLI 是否调了 `load_from` | 库未入库；或者库内代码忘了 `load_from` |
+| `found=False`, `reject_reason=low_doc_confidence` | doc_candidates 的 score 和 lexical_overlap | 用户没给文档线索，按设计拒答；可调低 `min_doc_score` / `min_doc_overlap` |
+| `found=False`, `reject_reason=low_section_confidence` | section_candidates | 兜底章节信号太弱，按设计拒答；同上可调阈值 |
 | doc 选错 | doc_candidates | 文件名/topic/alias 没覆盖到用户用词；试调高 `doc_top_k` |
 | anchor_section_id 是 INSUFFICIENT 但本应解析 | query 文本 | 看 `parsing/anchor.py` 规则；可能是用了不支持的格式 |
 | `section_method=anchor_exact` 但 section 错 | sections 表 | markdown 解析的 section_id 跟用户预期对不上 |
@@ -360,23 +388,34 @@ embed(query)
 pytest -q
 ```
 
-包含三组：
+包含四组：
 
-- `test_anchor.py`：锚点解析的核心 case 和 INSUFFICIENT 边界
-- `test_markdown.py`：section_id 固化、Chapter 0
-- `test_retrieval.py`：端到端（入库 → 锚点路径 + 兜底路径都跑一遍）
+- `test_anchor.py`：锚点解析的核心 case、INSUFFICIENT 边界、英文大小写、`序` 单字误伤
+- `test_markdown.py`：section_id 固化、Chapter 0（含 ATX `# 摘要` / `# Abstract`）
+- `test_retrieval.py`：端到端（锚点 + 兜底）、低置信拒答、向量持久化往返
+- `test_cli.py`：CLI demo 同进程、ingest+query 跨调用、空库不崩溃
 
 ## 已知限制
 
 这是练手项目，下面这些都是**故意**没做的：
 
-- **向量不持久化**：`VectorStore` 只在内存。要 CLI 跨进程查询，得把它存进 SQLite（schema 简单，自己加）。
 - **hash embedding 没语义**：`HashingEmbedder` 本质是 token 计数 + L2 归一，对"实验配置 vs 实验设置"这种近义词无能为力。真用得换 OpenAI 兼容 API。
 - **没有 LLM**：方案里 7.2/7.5 提到 LLM rerank，这里用本地词法 rerank（token 交集）替代。
-- **没有 Milvus**：方案里写了 Milvus，这里用内存 list + cosine 暴力遍历。文档量小够用。
+- **没有 Milvus**：方案里写了 Milvus，这里用内存 list + cosine 暴力遍历，向量持久化用 JSON 列。文档量小够用。
 - **没有真实 PDF benchmark**：仓库里有 `examples/sample.md` 一个文件演示。要做真实评测自己接 PyMuPDF 之类。
 
 如果要把这些补上，每一项都是独立改动，不会动到现有架构。
+
+## Roadmap
+
+按价值/复杂度从高到低排：
+
+- **可插拔 Embedder**：把 `HashingEmbedder` 抽成 `Embedder` 协议（`embed(text) / embed_many(texts) / dim`），加一个 OpenAI 兼容实现。注意切换 embedder 后旧 SQLite 里的向量会失效，需要 re-ingest 或在 `documents` / 向量表上加 embedder 标识做兼容判断。
+- **更好的章节兜底**：当前 fallback 只看层级标题拼接，对"实验设置 vs 实验配置"这种近义词无能为力。换语义 embedder 后再考虑加 title bigram 或 BM25 二路。
+- **批量 ingest 与 watch 模式**：`ingest <dir>` 递归入库 + `--watch` 监听文件变更，方便对接笔记目录。
+- **真实 PDF benchmark**：接 PyMuPDF / `unstructured`，跑一份带标注的小数据集，统计锚点路径和 fallback 路径的命中率，验证默认阈值是否合理。
+- **更精细的拒答阈值**：现在 `min_doc_score` / `min_section_score` 是单值兜底，可以做成相对差（top-1 vs top-2 score gap）来减少边缘 case 误拒。
+- **替换暴力 cosine**：文档量上千之后线性扫不行，可以接 Milvus 或 sqlite-vss。当前 schema 已经是 JSON 列，迁移成本可控。
 
 ## License
 

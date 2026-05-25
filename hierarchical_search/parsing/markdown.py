@@ -165,18 +165,37 @@ def parse_markdown(markdown: str) -> list[Section]:
     lines = markdown.splitlines()
     headings = _collect_headings(lines)
 
-    # 如果第一个 H1 是无编号的文档标题，跳过它
+    # ATX 风格 Chapter 0：开头连续的无编号 marker heading（# 摘要 / # Abstract / ...）
+    # 直接识别为 0.x，避免被后续"丢弃文档标题"的启发式吞掉。
+    atx_chapter0: list[Section] = []
+    while headings:
+        h = headings[0]
+        if h.prefix is not None:
+            break
+        sid = _chapter0_id(h.title)
+        if not sid:
+            break
+        start = h.line_no + 1
+        end = headings[1].line_no if len(headings) > 1 else len(lines)
+        body = "\n".join(lines[start:end]).strip()
+        atx_chapter0.append(
+            Section(sid, 2, h.title, body, "Chapter 0", h.title, "")
+        )
+        headings = headings[1:]
+
+    # 如果第一个 H1 是无编号的文档标题，跳过它（line_no 不再要求 <=2，
+    # 因为 ATX Chapter 0 抽取后剩余 heading 的行号可能很靠后）
     if (
         headings
-        and headings[0].line_no <= 2
         and headings[0].level == 1
         and headings[0].prefix is None
         and any(_prefix_to_section_id(h.prefix) for h in headings[1:])
     ):
         headings = headings[1:]
 
+    # 纯文本 Chapter 0 仅在 ATX 路径未识别时走（避免重复）
     first_line = headings[0].line_no if headings else None
-    chapter0 = _parse_chapter0(lines, first_line)
+    chapter0 = atx_chapter0 if atx_chapter0 else _parse_chapter0(lines, first_line)
 
     if not headings:
         return chapter0

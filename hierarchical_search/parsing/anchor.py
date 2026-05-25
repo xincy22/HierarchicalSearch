@@ -73,13 +73,14 @@ def parse_anchor(query: str) -> str:
     """从 query 解析 section_id，无法确定时返回 INSUFFICIENT。"""
     raw = _normalize_text(query)
 
-    # Chapter 0 关键词
+    # Chapter 0 关键词。英文统一在小写串里匹配，避免大小写不一致。
+    # 注意：单字 "序" 容易误伤"顺序/序列/程序"等，故只接受双字关键词。
     q = raw.lower()
     if "abstract" in q or "摘要" in raw:
         return "0.1"
-    if any(w in raw for w in ("前言", "序言", "preface", "序")):
+    if "preface" in q or any(w in raw for w in ("前言", "序言")):
         return "0.2"
-    if any(w in raw for w in ("引言", "导言", "introduction")):
+    if "introduction" in q or any(w in raw for w in ("引言", "导言")):
         return "0.3"
 
     # 显式数字路径：2.1, 3.2.1
