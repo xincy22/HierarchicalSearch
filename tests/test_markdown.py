@@ -1,8 +1,7 @@
-from hierarchical_search.parsers.markdown import MarkdownSectionParser
+from hierarchical_search.markdown import parse_markdown
 
 
-def test_markdown_parser_generates_stable_section_ids():
-    parser = MarkdownSectionParser()
+def test_generates_stable_section_ids():
     text = """摘要
 这是文档摘要。
 
@@ -18,7 +17,7 @@ def test_markdown_parser_generates_stable_section_ids():
 ## 2.1 实验设置
 实验设置正文。
 """
-    sections = parser.parse(text)
+    sections = parse_markdown(text)
     ids = [s.section_id for s in sections]
     assert ids == ["0.1", "1", "1.1", "2", "2.1"]
 
