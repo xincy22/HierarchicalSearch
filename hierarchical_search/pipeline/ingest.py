@@ -5,9 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
+from ..parsing.markdown import Section, parse_markdown
+from ..storage.db import DocStore
+from ..storage.vectors import DocVector, SectionVector, VectorStore
 from .embedding import HashingEmbedder
-from .markdown import Section, parse_markdown
-from .storage import DocStore, DocVector, SectionVector, VectorStore
 
 
 def _extract_topic(markdown: str, filename: str) -> str:

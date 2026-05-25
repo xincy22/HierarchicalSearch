@@ -7,10 +7,11 @@ from dataclasses import asdict
 import json
 import sys
 
-from .embedding import HashingEmbedder
-from .ingest import ingest_file
-from .retrieval import retrieve
-from .storage import DocStore, VectorStore
+from .pipeline.embedding import HashingEmbedder
+from .pipeline.ingest import ingest_file
+from .pipeline.retrieve import retrieve
+from .storage.db import DocStore
+from .storage.vectors import VectorStore
 
 # 全局单例（进程内共享）
 _vector_store = VectorStore()

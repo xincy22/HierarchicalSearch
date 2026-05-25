@@ -1,4 +1,4 @@
-from hierarchical_search.markdown import parse_markdown
+from hierarchical_search.parsing.markdown import parse_markdown
 
 
 def test_generates_stable_section_ids():

@@ -1,4 +1,4 @@
-from hierarchical_search.anchor import INSUFFICIENT, parse_anchor
+from hierarchical_search.parsing.anchor import INSUFFICIENT, parse_anchor
 
 
 def test_explicit_numeric_path():

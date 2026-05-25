@@ -1,7 +1,8 @@
-from hierarchical_search.embedding import HashingEmbedder
-from hierarchical_search.ingest import ingest_markdown
-from hierarchical_search.retrieval import retrieve
-from hierarchical_search.storage import DocStore, VectorStore
+from hierarchical_search.pipeline.embedding import HashingEmbedder
+from hierarchical_search.pipeline.ingest import ingest_markdown
+from hierarchical_search.pipeline.retrieve import retrieve
+from hierarchical_search.storage.db import DocStore
+from hierarchical_search.storage.vectors import VectorStore
 
 
 def test_anchor_then_fallback(tmp_path):

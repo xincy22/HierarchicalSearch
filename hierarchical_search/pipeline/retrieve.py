@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import re
 
-from .anchor import INSUFFICIENT, normalize_section_id, parse_anchor
+from ..parsing.anchor import INSUFFICIENT, normalize_section_id, parse_anchor
+from ..storage.db import DocStore
+from ..storage.vectors import VectorStore
 from .embedding import HashingEmbedder
-from .storage import DocStore, DocVector, SectionVector, VectorStore
 
 
 @dataclass(slots=True)
