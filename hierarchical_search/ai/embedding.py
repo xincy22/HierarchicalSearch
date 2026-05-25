@@ -9,11 +9,8 @@ from typing import Protocol
 class Embedder(Protocol):
     dim: int
 
-    def embed_text(self, text: str) -> list[float]:
-        ...
-
-    def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        ...
+    def embed_text(self, text: str) -> list[float]: ...
+    def embed_texts(self, texts: list[str]) -> list[list[float]]: ...
 
 
 class HashingEmbedder:
@@ -27,10 +24,7 @@ class HashingEmbedder:
 
     def embed_text(self, text: str) -> list[float]:
         vec = [0.0] * self.dim
-        tokens = self._tokenize(text)
-        if not tokens:
-            return vec
-        for token in tokens:
+        for token in self._tokenize(text):
             digest = blake2b(token.encode("utf-8"), digest_size=8).digest()
             bucket = int.from_bytes(digest, byteorder="little") % self.dim
             vec[bucket] += 1.0
@@ -51,12 +45,8 @@ class OpenAIEmbedder:
         dim: int = 1536,
         base_url: str | None = None,
     ):
-        try:
-            from openai import OpenAI  # type: ignore
-        except ImportError as exc:
-            raise RuntimeError(
-                "openai package is required for OpenAI embeddings. Install with `pip install openai`."
-            ) from exc
+        from openai import OpenAI  # type: ignore
+
         kwargs = {"api_key": api_key}
         if base_url:
             kwargs["base_url"] = base_url
@@ -71,14 +61,4 @@ class OpenAIEmbedder:
         if not texts:
             return []
         resp = self.client.embeddings.create(model=self.model, input=texts)
-        data = list(getattr(resp, "data", []) or [])
-        # Preserve input order if the API provides explicit indices.
-        try:
-            data.sort(key=lambda item: int(getattr(item, "index", 0)))
-        except Exception:
-            pass
-        embeddings: list[list[float]] = []
-        for item in data:
-            vec = getattr(item, "embedding", None)
-            embeddings.append([float(x) for x in (vec or [])])
-        return embeddings
+        return [[float(x) for x in item.embedding] for item in resp.data]

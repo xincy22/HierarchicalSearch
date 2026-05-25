@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from .base import DocVectorRecord, SearchHit, SectionVectorRecord
 
 
@@ -13,19 +11,14 @@ class MilvusVectorStore:
         doc_collection: str = "doc_vectors",
         section_collection: str = "section_vectors",
     ):
-        try:
-            from pymilvus import (  # type: ignore
-                Collection,
-                CollectionSchema,
-                DataType,
-                FieldSchema,
-                connections,
-                utility,
-            )
-        except ImportError as exc:
-            raise RuntimeError(
-                "pymilvus is required for Milvus backend. Install with `pip install pymilvus`."
-            ) from exc
+        from pymilvus import (  # type: ignore
+            Collection,
+            CollectionSchema,
+            DataType,
+            FieldSchema,
+            connections,
+            utility,
+        )
 
         self._Collection = Collection
         self._CollectionSchema = CollectionSchema
@@ -48,16 +41,16 @@ class MilvusVectorStore:
             return self._Collection(self.doc_collection_name)
 
         fields = [
-            self._FieldSchema(
-                name="id", dtype=self._DataType.INT64, is_primary=True, auto_id=True
-            ),
+            self._FieldSchema(name="id", dtype=self._DataType.INT64, is_primary=True, auto_id=True),
             self._FieldSchema(name="doc_id", dtype=self._DataType.INT64),
             self._FieldSchema(name="variant", dtype=self._DataType.VARCHAR, max_length=64),
             self._FieldSchema(name="text", dtype=self._DataType.VARCHAR, max_length=8192),
             self._FieldSchema(name="vector", dtype=self._DataType.FLOAT_VECTOR, dim=self.dim),
         ]
-        schema = self._CollectionSchema(fields=fields, description="Doc vectors")
-        collection = self._Collection(self.doc_collection_name, schema=schema)
+        collection = self._Collection(
+            self.doc_collection_name,
+            schema=self._CollectionSchema(fields=fields, description="Doc vectors"),
+        )
         collection.create_index(
             field_name="vector",
             index_params={
@@ -73,9 +66,7 @@ class MilvusVectorStore:
             return self._Collection(self.section_collection_name)
 
         fields = [
-            self._FieldSchema(
-                name="id", dtype=self._DataType.INT64, is_primary=True, auto_id=True
-            ),
+            self._FieldSchema(name="id", dtype=self._DataType.INT64, is_primary=True, auto_id=True),
             self._FieldSchema(name="doc_id", dtype=self._DataType.INT64),
             self._FieldSchema(name="section_id", dtype=self._DataType.VARCHAR, max_length=64),
             self._FieldSchema(name="l1_title", dtype=self._DataType.VARCHAR, max_length=1024),
@@ -84,8 +75,10 @@ class MilvusVectorStore:
             self._FieldSchema(name="text", dtype=self._DataType.VARCHAR, max_length=8192),
             self._FieldSchema(name="vector", dtype=self._DataType.FLOAT_VECTOR, dim=self.dim),
         ]
-        schema = self._CollectionSchema(fields=fields, description="Section vectors")
-        collection = self._Collection(self.section_collection_name, schema=schema)
+        collection = self._Collection(
+            self.section_collection_name,
+            schema=self._CollectionSchema(fields=fields, description="Section vectors"),
+        )
         collection.create_index(
             field_name="vector",
             index_params={
@@ -97,29 +90,28 @@ class MilvusVectorStore:
         return collection
 
     def _delete_by_doc_ids(self, collection, doc_ids: set[int]) -> None:
-        for doc_id in doc_ids:
-            collection.delete(expr=f"doc_id == {doc_id}")
+        if not doc_ids:
+            return
+        ids = ",".join(str(d) for d in doc_ids)
+        collection.delete(expr=f"doc_id in [{ids}]")
 
     def add_doc_vectors(self, rows: list[DocVectorRecord]) -> None:
         if not rows:
             return
-        doc_ids = {row.doc_id for row in rows}
-        self._delete_by_doc_ids(self.doc_collection, doc_ids)
-        entities = [
+        self._delete_by_doc_ids(self.doc_collection, {row.doc_id for row in rows})
+        self.doc_collection.insert([
             [row.doc_id for row in rows],
             [row.variant for row in rows],
             [row.text[:8192] for row in rows],
             [row.vector for row in rows],
-        ]
-        self.doc_collection.insert(entities)
+        ])
         self.doc_collection.flush()
 
     def add_section_vectors(self, rows: list[SectionVectorRecord]) -> None:
         if not rows:
             return
-        doc_ids = {row.doc_id for row in rows}
-        self._delete_by_doc_ids(self.section_collection, doc_ids)
-        entities = [
+        self._delete_by_doc_ids(self.section_collection, {row.doc_id for row in rows})
+        self.section_collection.insert([
             [row.doc_id for row in rows],
             [row.section_id for row in rows],
             [row.l1_title[:1024] for row in rows],
@@ -127,49 +119,40 @@ class MilvusVectorStore:
             [row.l3_title[:1024] for row in rows],
             [row.text[:8192] for row in rows],
             [row.vector for row in rows],
-        ]
-        self.section_collection.insert(entities)
+        ])
         self.section_collection.flush()
 
-    def _to_hit_payload(self, hit: Any) -> dict[str, object]:
-        entity = getattr(hit, "entity", None)
-        if entity is None:
-            return {}
-        payload: dict[str, object] = {}
-        for key in ("doc_id", "section_id", "variant", "text", "l1_title", "l2_title", "l3_title"):
-            try:
-                payload[key] = entity.get(key)
-            except Exception:
-                pass
-        return payload
+    @staticmethod
+    def _to_payload(hit, fields: list[str]) -> dict[str, object]:
+        return {key: hit.entity.get(key) for key in fields}
 
     def search_doc_vectors(self, query_vector: list[float], top_k: int) -> list[SearchHit]:
+        fields = ["doc_id", "variant", "text"]
         results = self.doc_collection.search(
             data=[query_vector],
             anns_field="vector",
             param={"metric_type": "COSINE", "params": {"ef": 128}},
             limit=top_k,
-            output_fields=["doc_id", "variant", "text"],
+            output_fields=fields,
         )
-        hits = results[0] if results else []
         return [
-            SearchHit(score=float(getattr(hit, "distance", 0.0)), payload=self._to_hit_payload(hit))
-            for hit in hits
+            SearchHit(score=float(hit.distance), payload=self._to_payload(hit, fields))
+            for hit in (results[0] if results else [])
         ]
 
     def search_section_vectors(
         self, query_vector: list[float], doc_id: int, top_k: int
     ) -> list[SearchHit]:
+        fields = ["doc_id", "section_id", "text", "l1_title", "l2_title", "l3_title"]
         results = self.section_collection.search(
             data=[query_vector],
             anns_field="vector",
             param={"metric_type": "COSINE", "params": {"ef": 128}},
             expr=f"doc_id == {doc_id}",
             limit=top_k,
-            output_fields=["doc_id", "section_id", "text", "l1_title", "l2_title", "l3_title"],
+            output_fields=fields,
         )
-        hits = results[0] if results else []
         return [
-            SearchHit(score=float(getattr(hit, "distance", 0.0)), payload=self._to_hit_payload(hit))
-            for hit in hits
+            SearchHit(score=float(hit.distance), payload=self._to_payload(hit, fields))
+            for hit in (results[0] if results else [])
         ]

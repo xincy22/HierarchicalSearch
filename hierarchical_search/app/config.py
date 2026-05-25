@@ -7,8 +7,6 @@ from pathlib import Path
 
 def _parse_env_value(raw_value: str) -> str:
     value = raw_value.strip()
-    if not value:
-        return ""
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
         return value[1:-1]
     if " #" in value:
@@ -18,39 +16,27 @@ def _parse_env_value(raw_value: str) -> str:
 
 def _load_env_file(path: str) -> None:
     env_path = Path(path)
-    if not env_path.exists() or not env_path.is_file():
+    if not env_path.exists():
         return
     for raw_line in env_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
-            line = line[len("export ") :].strip()
+            line = line[len("export "):].strip()
         if "=" not in line:
             continue
         key, raw_value = line.split("=", 1)
         key = key.strip()
-        if not key:
-            continue
-        value = _parse_env_value(raw_value)
-        os.environ.setdefault(key, value)
-
-
-def _load_runtime_env() -> None:
-    env_file = os.getenv("HS_ENV_FILE", ".env")
-    _load_env_file(env_file)
+        if key:
+            os.environ.setdefault(key, _parse_env_value(raw_value))
 
 
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
         return default
-    value = raw.strip().lower()
-    if value in {"1", "true", "yes", "on"}:
-        return True
-    if value in {"0", "false", "no", "off"}:
-        return False
-    return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass(slots=True)
@@ -72,21 +58,15 @@ class Settings:
     doc_top_k: int = 20
     section_top_k: int = 50
     llm_rerank_enabled: bool = True
-    doc_rerank_gap_threshold: float = 0.08
-    section_rerank_gap_threshold: float = 0.05
-    doc_rerank_max_candidates: int = 8
-    section_rerank_max_candidates: int = 12
 
     @classmethod
     def from_env(cls) -> "Settings":
-        _load_runtime_env()
+        _load_env_file(os.getenv("HS_ENV_FILE", ".env"))
         defaults = cls()
         return cls(
             database_url=os.getenv("HS_DATABASE_URL", defaults.database_url),
             vector_backend=os.getenv("HS_VECTOR_BACKEND", defaults.vector_backend),
-            embedding_backend=os.getenv(
-                "HS_EMBEDDING_BACKEND", defaults.embedding_backend
-            ),
+            embedding_backend=os.getenv("HS_EMBEDDING_BACKEND", defaults.embedding_backend),
             llm_backend=os.getenv("HS_LLM_BACKEND", defaults.llm_backend),
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             openai_base_url=os.getenv("HS_OPENAI_BASE_URL", os.getenv("OPENAI_BASE_URL")),
@@ -106,31 +86,5 @@ class Settings:
             embedding_dim=int(os.getenv("HS_EMBEDDING_DIM", str(defaults.embedding_dim))),
             doc_top_k=int(os.getenv("HS_DOC_TOP_K", str(defaults.doc_top_k))),
             section_top_k=int(os.getenv("HS_SECTION_TOP_K", str(defaults.section_top_k))),
-            llm_rerank_enabled=_env_bool(
-                "HS_LLM_RERANK_ENABLED", defaults.llm_rerank_enabled
-            ),
-            doc_rerank_gap_threshold=float(
-                os.getenv(
-                    "HS_DOC_RERANK_GAP_THRESHOLD",
-                    str(defaults.doc_rerank_gap_threshold),
-                )
-            ),
-            section_rerank_gap_threshold=float(
-                os.getenv(
-                    "HS_SECTION_RERANK_GAP_THRESHOLD",
-                    str(defaults.section_rerank_gap_threshold),
-                )
-            ),
-            doc_rerank_max_candidates=int(
-                os.getenv(
-                    "HS_DOC_RERANK_MAX_CANDIDATES",
-                    str(defaults.doc_rerank_max_candidates),
-                )
-            ),
-            section_rerank_max_candidates=int(
-                os.getenv(
-                    "HS_SECTION_RERANK_MAX_CANDIDATES",
-                    str(defaults.section_rerank_max_candidates),
-                )
-            ),
+            llm_rerank_enabled=_env_bool("HS_LLM_RERANK_ENABLED", defaults.llm_rerank_enabled),
         )

@@ -13,17 +13,17 @@ from ..services.retrieval import HierarchicalRetriever
 
 def _build_settings_from_args(args: argparse.Namespace) -> Settings:
     s = Settings.from_env()
-    if getattr(args, "database_url", None):
+    if args.database_url:
         s.database_url = args.database_url
-    if getattr(args, "vector_backend", None):
+    if args.vector_backend:
         s.vector_backend = args.vector_backend
-    if getattr(args, "local_vector_path", None):
+    if args.local_vector_path:
         s.local_vector_path = args.local_vector_path
-    if getattr(args, "embedding_backend", None):
+    if args.embedding_backend:
         s.embedding_backend = args.embedding_backend
-    if getattr(args, "llm_backend", None):
+    if args.llm_backend:
         s.llm_backend = args.llm_backend
-    if getattr(args, "prompt_file", None):
+    if args.prompt_file:
         s.prompt_file = args.prompt_file
     return s
 
@@ -38,8 +38,6 @@ def _add_common_flags(parser: argparse.ArgumentParser) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = argv if argv is not None else sys.argv[1:]
-
     parser = argparse.ArgumentParser(prog="hierarchical-search")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -54,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     query_parser.add_argument("query", help="user question")
     _add_common_flags(query_parser)
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
     settings = _build_settings_from_args(args)
     services = build_services(settings)
 

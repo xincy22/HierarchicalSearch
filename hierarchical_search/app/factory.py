@@ -28,8 +28,6 @@ def build_services(settings: Settings | None = None) -> ServiceBundle:
     repository = DocumentRepository(db)
 
     if settings.embedding_backend == "openai":
-        if not settings.openai_api_key:
-            raise RuntimeError("OPENAI_API_KEY is required when HS_EMBEDDING_BACKEND=openai")
         embedder = OpenAIEmbedder(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
@@ -40,8 +38,6 @@ def build_services(settings: Settings | None = None) -> ServiceBundle:
         embedder = HashingEmbedder(dim=settings.embedding_dim)
 
     if settings.llm_backend == "openai":
-        if not settings.openai_api_key:
-            raise RuntimeError("OPENAI_API_KEY is required when HS_LLM_BACKEND=openai")
         llm_client = OpenAILLMClient(
             api_key=settings.openai_api_key,
             base_url=settings.openai_base_url,
